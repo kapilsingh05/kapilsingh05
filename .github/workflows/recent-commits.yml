@@ -1,0 +1,70 @@
+name: Update recent commits
+
+on:
+  schedule:
+    - cron: "0 18 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  update-readme:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out profile repository
+        uses: actions/checkout@v4
+
+      - name: Update README with recent commits
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          python - <<'PY'
+          import json
+          import os
+          import re
+          import urllib.request
+
+          owner = "kapilsingh05"
+          repo = "Leet-s-Code"
+          token = os.environ["GH_TOKEN"]
+
+          request = urllib.request.Request(
+              f"https://api.github.com/repos/{owner}/{repo}/commits?per_page=5",
+              headers={
+                  "Accept": "application/vnd.github+json",
+                  "Authorization": f"Bearer {token}",
+                  "X-GitHub-Api-Version": "2022-11-28",
+              },
+          )
+
+          with urllib.request.urlopen(request) as response:
+              commits = json.load(response)
+
+          lines = ["<!-- RECENT-COMMITS:START -->"]
+          for commit in commits:
+              message = commit["commit"]["message"].splitlines()[0]
+              url = commit["html_url"]
+              lines.append(f"- [{message}]({url})")
+
+          lines.append("<!-- RECENT-COMMITS:END -->")
+          path = "README.md"
+          readme = open(path, encoding="utf-8").read()
+          updated = re.sub(
+              r"<!-- RECENT-COMMITS:START -->.*?<!-- RECENT-COMMITS:END -->",
+              "\n".join(lines),
+              readme,
+              flags=re.S,
+          )
+
+          if updated != readme:
+              open(path, "w", encoding="utf-8").write(updated)
+          PY
+
+      - name: Commit README update
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add README.md
+          git diff --cached --quiet || git commit -m "Update recent commits"
+          git push
